@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── User ───────────────────────────────────────────────────────────
+
+model User {
+  id              String   @id @default(cuid())
+  name            String?
+  email           String?  @unique
+  emailVerified   DateTime?
+  image           String?
+  discordId       String   @unique
+  discordUsername String
+  avatarUrl       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sentConnections     Connection[]     @relation("Requester")
+  receivedConnections Connection[]     @relation("Addressee")
+  sentPhotos          Photo[]          @relation("Sender")
+  receivedPhotos      PhotoRecipient[]
+  settings            UserSettings?
+  inviteCode          String?          @unique
+  
+  accounts            Account[]
+  sessions            Session[]
+
+  @@index([discordId])
+  @@map("users")
+}
+
+// ─── Connection ─────────────────────────────────────────────────────
+
+model Connection {
+  id          String           @id @default(cuid())
+  requesterId String
+  addresseeId String
+  status      ConnectionStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  requester User @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("Addressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+  @@index([requesterId, status])
+  @@index([addresseeId, status])
+  @@map("connections")
+}
+
+// ─── Photo ──────────────────────────────────────────────────────────
+
+model Photo {
+  id         String   @id @default(cuid())
+  senderId   String
+  storageKey String
+  mimeType   String
+  sizeBytes  Int
+  width      Int?
+  height     Int?
+  mediaType  String   @default("IMAGE")
+  caption    String?  @db.VarChar(500)
+  createdAt  DateTime @default(now())
+
+  sender     User             @relation("Sender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipients PhotoRecipient[]
+
+  @@index([senderId, createdAt(sort: Desc)])
+  @@map("photos")
+}
+
+// ─── PhotoRecipient ─────────────────────────────────────────────────
+
+model PhotoRecipient {
+  id          String    @id @default(cuid())
+  photoId     String
+  recipientId String
+  viewedAt    DateTime?
+  deliveredAt DateTime  @default(now())
+
+  photo     Photo @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  recipient User  @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([photoId, recipientId])
+  @@index([recipientId, deliveredAt(sort: Desc)])
+  @@map("photo_recipients")
+}
+
+// ─── UserSettings ───────────────────────────────────────────────────
+
+model UserSettings {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  allowDmPhotos   Boolean  @default(true)
+  notifyOnReceive Boolean  @default(true)
+  autoAcceptFrom  String[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────
+
+enum ConnectionStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+// ─── Auth.js Models ─────────────────────────────────────────────────
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String? @db.Text
+  access_token       String? @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String? @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
